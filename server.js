@@ -5,6 +5,7 @@ import cors from 'cors';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase-config.js';
 import { v4 as uuidv4 } from 'uuid';
+import { setInterval } from 'timers'; // Add this to ensure we can use setInterval
 
 // Initialize Express app
 const app = express();
@@ -105,3 +106,14 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
+
+
+
+// Call keep-alive API every 14 minutes
+setInterval(() => {
+  http.get(`http://${process.env.VITE_APP_BACKEND_URL}/api/keep-alive`, (res) => {
+    console.log('Keep-alive ping sent');
+  }).on('error', (e) => {
+    console.error(`Error with keep-alive request: ${e.message}`);
+  });
+}, 14 * 60 * 1000);
