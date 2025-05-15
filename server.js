@@ -90,6 +90,10 @@ app.post('/api/code/:roomId', async (req, res) => {
   }
 });
 
+app.get('/api/keep-alive', (req, res) => {
+  res.json({ message: 'Server is alive' });
+});
+
 // Generate a new random route
 app.get('/api/new', (req, res) => {
   const roomId = uuidv4();
