@@ -97,12 +97,7 @@ app.get('/api/new', (req, res) => {
 });
 
 // Start server
-// const PORT = process.env.PORT || 5000;
-// server.listen(PORT, () => {
-//   console.log(`🚀 Server running at http://localhost:${PORT}`);
-// });
-
-
-export default (req, res) => {
-    app(req, res); // Wrap the Express app to work with serverless functions
-};
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+});
