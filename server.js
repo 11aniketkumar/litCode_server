@@ -92,6 +92,7 @@ app.post('/api/code/:roomId', async (req, res) => {
 });
 
 app.get('/api/keep-alive', (req, res) => {
+  console.log("request accepted on keep-alive");
   res.json({ message: 'Server is alive' });
 });
 
