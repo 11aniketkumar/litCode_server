@@ -150,7 +150,7 @@ app.get("/api/keep-alive", async (req, res) => {
     try {
         console.log("request accepted on keep-alive");
 
-        // Check for expired documents
+        // Check for expired documents with empty or whitespace-only code
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -160,11 +160,15 @@ app.get("/api/keep-alive", async (req, res) => {
         const deletePromises = [];
         snapshot.forEach((docSnap) => {
             const data = docSnap.data();
-            // Only delete documents that have a lastAccessedAt field and are older than 30 days
+            // Only consider documents with lastAccessedAt
             if (data.lastAccessedAt) {
                 const lastAccessed = new Date(data.lastAccessedAt);
-                if (lastAccessed < thirtyDaysAgo) {
-                    console.log(`Deleting expired document: ${docSnap.id}`);
+                const isCodeEmpty = !data.code || data.code.trim() === "";
+                // Delete if older than 30 days AND code is empty/only whitespace
+                if (lastAccessed < thirtyDaysAgo || isCodeEmpty) {
+                    console.log(
+                        `Deleting expired and empty document: ${docSnap.id}`
+                    );
                     deletePromises.push(
                         deleteDoc(doc(db, "codes", docSnap.id))
                     );
@@ -173,7 +177,7 @@ app.get("/api/keep-alive", async (req, res) => {
         });
 
         await Promise.all(deletePromises);
-        console.log(`Deleted ${deletePromises.length} expired documents`);
+        console.log(`Deleted ${deletePromises.length} documents`);
 
         res.json({
             message: "Server is alive",
