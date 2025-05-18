@@ -1,17 +1,26 @@
-import express from 'express';
-import http from 'http';
-import { Server } from 'socket.io';
-import cors from 'cors';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from './firebase-config.js';
-import { v4 as uuidv4 } from 'uuid';
-import { setInterval } from 'timers'; // Add this to ensure we can use setInterval
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
+import {
+    doc,
+    getDoc,
+    setDoc,
+    deleteDoc,
+    collection,
+    getDocs,
+} from "firebase/firestore";
+import { db } from "./firebase-config.js";
+import { v4 as uuidv4 } from "uuid";
+import { setInterval } from "timers";
 
 // Initialize Express app
 const app = express();
-app.use(cors({
-  origin: '*', // Adjust for production to specific frontend URL
-}));
+app.use(
+    cors({
+        origin: "*", // Adjust for production to specific frontend URL
+    })
+);
 app.use(express.json());
 
 // Create HTTP server
@@ -19,91 +28,161 @@ const server = http.createServer(app);
 
 // Initialize Socket.IO
 const io = new Server(server, {
-  cors: {
-    origin: '*', // Adjust for production
-    methods: ['GET', 'POST'],
-  },
+    cors: {
+        origin: "*", // Adjust for production
+        methods: ["GET", "POST"],
+    },
 });
 
 // Socket.IO connection handling
-io.on('connection', (socket) => {
-  console.log('✅ User connected:', socket.id);
+io.on("connection", (socket) => {
+    console.log("✅ User connected:", socket.id);
 
-  socket.on('join-room', async (roomId) => {
-    try {
-      socket.join(roomId);
-      console.log(`User ${socket.id} joined room: ${roomId}`);
+    socket.on("join-room", async (roomId) => {
+        try {
+            socket.join(roomId);
+            console.log(`User ${socket.id} joined room: ${roomId}`);
 
-      // Fetch code from Firestore
-      const docRef = doc(db, 'codes', roomId);
-      const docSnap = await getDoc(docRef);
-      const code = docSnap.exists() ? docSnap.data().code : '';
+            // Fetch code from Firestore
+            const docRef = doc(db, "codes", roomId);
+            const docSnap = await getDoc(docRef);
+            const code = docSnap.exists() ? docSnap.data().code : "";
 
-      // Emit the loaded code to the client
-      socket.emit('load-code', code);
-    } catch (error) {
-      console.error('Error joining room:', error);
-      socket.emit('error', 'Failed to join room');
-    }
-  });
+            // Update last accessed time
+            if (docSnap.exists()) {
+                await setDoc(
+                    docRef,
+                    { lastAccessedAt: new Date().toISOString() },
+                    { merge: true }
+                );
+            }
 
-  socket.on('code-change', async ({ roomId, code }) => {
-    try {
-      // Save code to Firestore
-      await setDoc(doc(db, 'codes', roomId), { code }, { merge: true });
+            // Emit the loaded code to the client
+            socket.emit("load-code", code);
+        } catch (error) {
+            console.error("Error joining room:", error);
+            socket.emit("error", "Failed to join room");
+        }
+    });
 
-      // Broadcast code change to other clients in the room
-      socket.to(roomId).emit('code-change', code);
-    } catch (error) {
-      console.error('Error saving code:', error);
-      socket.emit('error', 'Failed to save code');
-    }
-  });
+    socket.on("code-change", async ({ roomId, code }) => {
+        try {
+            // Save code to Firestore with timestamp
+            await setDoc(
+                doc(db, "codes", roomId),
+                {
+                    code,
+                    lastAccessedAt: new Date().toISOString(),
+                },
+                { merge: true }
+            );
 
-  socket.on('disconnect', () => {
-    console.log('❌ User disconnected:', socket.id);
-  });
+            // Broadcast code change to other clients in the room
+            socket.to(roomId).emit("code-change", code);
+        } catch (error) {
+            console.error("Error saving code:", error);
+            socket.emit("error", "Failed to save code");
+        }
+    });
+
+    socket.on("disconnect", () => {
+        console.log("❌ User disconnected:", socket.id);
+    });
 });
 
 // REST routes
-app.get('/api/code/:roomId', async (req, res) => {
-  try {
-    const roomId = req.params.roomId;
-    const docRef = doc(db, 'codes', roomId);
-    const docSnap = await getDoc(docRef);
-    const code = docSnap.exists() ? docSnap.data().code : '';
-    res.json({ code });
-  } catch (error) {
-    console.error('Error fetching code:', error);
-    res.status(500).json({ error: 'Failed to fetch code' });
-  }
+app.get("/api/code/:roomId", async (req, res) => {
+    try {
+        const roomId = req.params.roomId;
+        const docRef = doc(db, "codes", roomId);
+        const docSnap = await getDoc(docRef);
+        const code = docSnap.exists() ? docSnap.data().code : "";
+
+        // Update last accessed time
+        if (docSnap.exists()) {
+            await setDoc(
+                docRef,
+                { lastAccessedAt: new Date().toISOString() },
+                { merge: true }
+            );
+        }
+
+        res.json({ code });
+    } catch (error) {
+        console.error("Error fetching code:", error);
+        res.status(500).json({ error: "Failed to fetch code" });
+    }
 });
 
-app.post('/api/code/:roomId', async (req, res) => {
-  try {
-    const roomId = req.params.roomId;
-    const { code } = req.body;
-    await setDoc(doc(db, 'codes', roomId), { code }, { merge: true });
-    res.json({ message: 'Code saved successfully' });
-  } catch (error) {
-    console.error('Error saving code:', error);
-    res.status(500).json({ error: 'Failed to save code' });
-  }
+app.post("/api/code/:roomId", async (req, res) => {
+    try {
+        const roomId = req.params.roomId;
+        const { code } = req.body;
+        await setDoc(
+            doc(db, "codes", roomId),
+            {
+                code,
+                lastAccessedAt: new Date().toISOString(),
+            },
+            { merge: true }
+        );
+        res.json({ message: "Code saved successfully" });
+    } catch (error) {
+        console.error("Error saving code:", error);
+        res.status(500).json({ error: "Failed to save code" });
+    }
 });
 
-app.get('/api/keep-alive', (req, res) => {
-  console.log("request accepted on keep-alive");
-  res.json({ message: 'Server is alive' });
+app.get("/api/keep-alive", async (req, res) => {
+    try {
+        console.log("request accepted on keep-alive");
+
+        // Check for expired documents
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const codesCollection = collection(db, "codes");
+        const snapshot = await getDocs(codesCollection);
+
+        const deletePromises = [];
+        snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            // Only delete documents that have a lastAccessedAt field and are older than 30 days
+            if (data.lastAccessedAt) {
+                const lastAccessed = new Date(data.lastAccessedAt);
+                if (lastAccessed < thirtyDaysAgo) {
+                    console.log(`Deleting expired document: ${docSnap.id}`);
+                    deletePromises.push(
+                        deleteDoc(doc(db, "codes", docSnap.id))
+                    );
+                }
+            }
+        });
+
+        await Promise.all(deletePromises);
+        console.log(`Deleted ${deletePromises.length} expired documents`);
+
+        res.json({
+            message: "Server is alive",
+            deletedCount: deletePromises.length,
+        });
+    } catch (error) {
+        console.error("Error in keep-alive:", error);
+        res.status(500).json({
+            message: "Server is alive but error in cleanup",
+            error: error.message,
+        });
+    }
 });
 
 // Generate a new random route
-app.get('/api/new', (req, res) => {
-  const roomId = uuidv4();
-  res.json({ roomId });
+app.get("/api/new", (req, res) => {
+    const roomId = uuidv4();
+    res.json({ roomId });
 });
 
 // Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+    console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
