@@ -48,8 +48,8 @@ io.on("connection", (socket) => {
             const docSnap = await getDoc(docRef);
             const code = docSnap.exists() ? docSnap.data().code : "";
 
-            // Update last accessed time
-            if (docSnap.exists()) {
+            // Update last accessed time only if lastAccessedAt exists
+            if (docSnap.exists() && docSnap.data().lastAccessedAt) {
                 await setDoc(
                     docRef,
                     { lastAccessedAt: new Date().toISOString() },
@@ -67,15 +67,21 @@ io.on("connection", (socket) => {
 
     socket.on("code-change", async ({ roomId, code }) => {
         try {
-            // Save code to Firestore with timestamp
-            await setDoc(
-                doc(db, "codes", roomId),
-                {
-                    code,
-                    lastAccessedAt: new Date().toISOString(),
-                },
-                { merge: true }
-            );
+            // Fetch document to check if lastAccessedAt exists
+            const docRef = doc(db, "codes", roomId);
+            const docSnap = await getDoc(docRef);
+
+            // Prepare update data
+            const updateData = { code };
+            if (docSnap.exists() && docSnap.data().lastAccessedAt) {
+                updateData.lastAccessedAt = new Date().toISOString();
+            } else if (!docSnap.exists()) {
+                // New document, add lastAccessedAt
+                updateData.lastAccessedAt = new Date().toISOString();
+            }
+
+            // Save code to Firestore
+            await setDoc(docRef, updateData, { merge: true });
 
             // Broadcast code change to other clients in the room
             socket.to(roomId).emit("code-change", code);
@@ -98,8 +104,8 @@ app.get("/api/code/:roomId", async (req, res) => {
         const docSnap = await getDoc(docRef);
         const code = docSnap.exists() ? docSnap.data().code : "";
 
-        // Update last accessed time
-        if (docSnap.exists()) {
+        // Update last accessed time only if lastAccessedAt exists
+        if (docSnap.exists() && docSnap.data().lastAccessedAt) {
             await setDoc(
                 docRef,
                 { lastAccessedAt: new Date().toISOString() },
@@ -118,14 +124,21 @@ app.post("/api/code/:roomId", async (req, res) => {
     try {
         const roomId = req.params.roomId;
         const { code } = req.body;
-        await setDoc(
-            doc(db, "codes", roomId),
-            {
-                code,
-                lastAccessedAt: new Date().toISOString(),
-            },
-            { merge: true }
-        );
+
+        // Fetch document to check if lastAccessedAt exists
+        const docRef = doc(db, "codes", roomId);
+        const docSnap = await getDoc(docRef);
+
+        // Prepare update data
+        const updateData = { code };
+        if (docSnap.exists() && docSnap.data().lastAccessedAt) {
+            updateData.lastAccessedAt = new Date().toISOString();
+        } else if (!docSnap.exists()) {
+            // New document, add lastAccessedAt
+            updateData.lastAccessedAt = new Date().toISOString();
+        }
+
+        await setDoc(docRef, updateData, { merge: true });
         res.json({ message: "Code saved successfully" });
     } catch (error) {
         console.error("Error saving code:", error);
