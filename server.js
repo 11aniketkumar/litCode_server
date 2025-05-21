@@ -34,6 +34,8 @@ const io = new Server(server, {
     },
 });
 
+// ... (previous imports and setup remain unchanged)
+
 // Socket.IO connection handling
 io.on("connection", (socket) => {
     console.log("✅ User connected:", socket.id);
@@ -59,6 +61,9 @@ io.on("connection", (socket) => {
 
             // Emit the loaded code to the client
             socket.emit("load-code", code);
+
+            // Notify others in the room about the new user for WebRTC
+            socket.to(roomId).emit("user-connected", socket.id);
         } catch (error) {
             console.error("Error joining room:", error);
             socket.emit("error", "Failed to join room");
@@ -76,7 +81,6 @@ io.on("connection", (socket) => {
             if (docSnap.exists() && docSnap.data().lastAccessedAt) {
                 updateData.lastAccessedAt = new Date().toISOString();
             } else if (!docSnap.exists()) {
-                // New document, add lastAccessedAt
                 updateData.lastAccessedAt = new Date().toISOString();
             }
 
@@ -91,8 +95,28 @@ io.on("connection", (socket) => {
         }
     });
 
+    // WebRTC signaling events
+    socket.on("offer", ({ roomId, offer, to }) => {
+        socket.to(to).emit("offer", { offer, from: socket.id });
+    });
+
+    socket.on("answer", ({ roomId, answer, to }) => {
+        socket.to(to).emit("answer", { answer, from: socket.id });
+    });
+
+    socket.on("ice-candidate", ({ roomId, candidate, to }) => {
+        socket.to(to).emit("ice-candidate", { candidate, from: socket.id });
+    });
+
     socket.on("disconnect", () => {
         console.log("❌ User disconnected:", socket.id);
+        // Notify others in the room about disconnection
+        socket.rooms.forEach((room) => {
+            if (room !== socket.id) {
+                // Exclude the default room (socket.id)
+                socket.to(room).emit("user-disconnected", socket.id);
+            }
+        });
     });
 });
 
